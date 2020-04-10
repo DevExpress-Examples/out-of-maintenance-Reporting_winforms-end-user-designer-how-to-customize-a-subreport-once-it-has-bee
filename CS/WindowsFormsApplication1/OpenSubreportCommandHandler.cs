@@ -3,6 +3,7 @@ using DevExpress.DataAccess.Sql;
 using DevExpress.XtraReports.UI;
 using DevExpress.XtraReports.UserDesigner;
 using DevExpress.XtraReports.UserDesigner.Native;
+using DevExpress.XtraRichEdit.Layout;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
@@ -25,18 +26,20 @@ namespace WindowsFormsApplication1 {
 
         void ICommandHandler.HandleCommand(ReportCommand command, object[] args) {
             XRDesignPanel panel = mdiController.ActiveDesignPanel;
-            IWindowsService windowsSvc = panel.GetService(typeof(IWindowsService)) as IWindowsService;
-            windowsSvc.EditSubreport((XRSubreport)args[0]);
-            panel = mdiController.ActiveDesignPanel;
-            IDesignerHost host = panel.GetService(typeof(IDesignerHost)) as IDesignerHost;
-            if (host.Container.Components.OfType<SqlDataSource>().FirstOrDefault() == null) {
-                CreateReport(panel, host);
-                panel.Report.Site.Name = "MyReport";
+
+            XRSubreport subreport = (XRSubreport)args[0];
+            if (subreport.ReportSource == null && String.IsNullOrEmpty(subreport.ReportSourceUrl)) {
+                subreport.ReportSource = CreateReport();
             }
+
+            IWindowsService windowsSvc = panel.GetService(typeof(IWindowsService)) as IWindowsService;
+            windowsSvc.EditSubreport(subreport);
+            subreport.ReportSource = null;
         }
         #endregion
 
-        private void CreateReport(XRDesignPanel panel, IDesignerHost host) {
+        private XtraReport CreateReport() {            
+            
             Access97ConnectionParameters parameters = new Access97ConnectionParameters(@"|DataDirectory|\nwind.mdb", "", "");
             SqlDataSource ds = new SqlDataSource(parameters);
 
@@ -44,50 +47,48 @@ namespace WindowsFormsApplication1 {
             ds.Queries.Add(query);
             ds.RebuildResultSchema();
 
-            host.Container.Add(ds);
 
-            panel.Report.DataSource = ds;
-            panel.Report.DataMember = query.Name;
+            XtraReport report = new XtraReport() {
+                DataSource = ds,
+                DataMember = query.Name
+            };
 
 
+            float actualPageWidth = report.PageWidth - (report.Margins.Left + report.Margins.Right);
             int colCount = 3;
-            float colWidth = (panel.Report.PageWidth - (panel.Report.Margins.Left + panel.Report.Margins.Right)) / (float)colCount;
+            float colWidth = actualPageWidth / colCount;
 
-            XRTable tableDetail = new XRTable();
-            tableDetail.HeightF = 25f;
-            tableDetail.WidthF = (panel.Report.PageWidth - (panel.Report.Margins.Left + panel.Report.Margins.Right));
-
+            XRTable tableDetail = new XRTable() {
+                HeightF = 25f,
+                WidthF = actualPageWidth
+            };
+            
             tableDetail.BeginInit();
 
             XRTableRow detailRow = new XRTableRow();
             detailRow.WidthF = tableDetail.WidthF;
             tableDetail.Rows.Add(detailRow);
-            host.Container.Add(detailRow);
 
-            XRTableCell detailCell = new XRTableCell();
-            detailCell.WidthF = colWidth;
+            XRTableCell detailCell = new XRTableCell() { WidthF = colWidth };
             detailCell.ExpressionBindings.Add(new ExpressionBinding("BeforePrint", "Text", "[ProductName]"));
             detailRow.Cells.Add(detailCell);
-            host.Container.Add(detailCell);
 
-            detailCell = new XRTableCell();
-            detailCell.WidthF = colWidth;
+            detailCell = new XRTableCell() { WidthF = colWidth };
             detailCell.ExpressionBindings.Add(new ExpressionBinding("BeforePrint", "Text", "[QuantityPerUnit]"));
             detailRow.Cells.Add(detailCell);
-            host.Container.Add(detailCell);
 
-            detailCell = new XRTableCell();
-            detailCell.WidthF = colWidth;
+            detailCell = new XRTableCell() { WidthF = colWidth };
             detailCell.ExpressionBindings.Add(new ExpressionBinding("BeforePrint", "Text", "[UnitPrice]"));
             detailRow.Cells.Add(detailCell);
-            host.Container.Add(detailCell);
 
             tableDetail.EndInit();
 
-            panel.Report.Bands[BandKind.Detail].HeightF = 25f;
-            panel.Report.Bands[BandKind.Detail].Controls.Add(tableDetail);
+            report.Bands.Add(new DetailBand() {
+                HeightF = 25f
+            });
+            report.Bands[BandKind.Detail].Controls.Add(tableDetail);
 
-            host.Container.Add(tableDetail);
+            return report;
         }
 
 
